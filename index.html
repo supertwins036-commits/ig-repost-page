@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<!-- 読み込めるのは自分のファイルと cdnjs の JSZip だけ。通信先は GitHub の API だけ -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self' https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js; style-src 'self' 'unsafe-inline'; connect-src https://api.github.com; img-src 'self' data:; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="イベント再投稿">
+<meta name="theme-color" content="#c13584">
+<title>イベント再投稿リスト</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.png">
+<style>
+:root { --bg:#fafafa; --card:#fff; --fg:#1a1a1a; --muted:#666; --line:#e2e2e2; --accent:#c13584; --ok:#1a7f37; --warn:#9a6700; --bad:#b42318; }
+@media (prefers-color-scheme: dark) { :root { --bg:#111; --card:#1c1c1c; --fg:#eee; --muted:#a3a3a3; --line:#333; --accent:#f77fbe; --ok:#4ac26b; --warn:#e3b341; --bad:#ff7b72; } }
+* { box-sizing:border-box; }
+html { -webkit-text-size-adjust:100%; }
+body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui,-apple-system,"Hiragino Sans","Yu Gothic UI",sans-serif; padding-bottom:env(safe-area-inset-bottom); }
+header { position:sticky; top:0; z-index:2; background:var(--bg); border-bottom:1px solid var(--line); padding:calc(10px + env(safe-area-inset-top)) 16px 10px; }
+h1 { font-size:1.05rem; margin:0; }
+.status { color:var(--muted); font-size:.8rem; margin:4px 0 8px; }
+.status .warn { color:var(--warn); }
+.row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.btn { font:inherit; font-size:.9rem; padding:9px 12px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--fg); cursor:pointer; text-decoration:none; text-align:center; }
+.btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+.btn.ok { border-color:var(--ok); color:var(--ok); }
+.btn:disabled { opacity:.5; }
+.tabs { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+.tabs button { flex:0 0 auto; font:inherit; font-size:.82rem; padding:6px 11px; border-radius:999px; border:1px solid var(--line); background:var(--card); color:var(--fg); }
+.tabs button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+.tabs .n { margin-left:4px; opacity:.8; }
+#msg { margin:10px 16px 0; padding:10px 12px; border-radius:10px; font-size:.88rem; display:none; white-space:pre-line; }
+#msg.info { display:block; background:var(--card); border:1px solid var(--line); }
+#msg.ok { display:block; background:var(--card); border:1px solid var(--ok); }
+#msg.bad { display:block; background:var(--card); border:1px solid var(--bad); color:var(--bad); }
+main { padding:12px 16px 40px; display:grid; gap:10px; grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr)); }
+.card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px; display:flex; flex-direction:column; gap:8px; min-width:0; }
+.who { font-weight:600; overflow-wrap:anywhere; }
+.sub { color:var(--muted); font-size:.8rem; }
+.ev { font-size:.9rem; }
+.ev.ok { color:var(--ok); }
+.reason { font-size:.85rem; color:var(--warn); }
+.hl { font-size:.95rem; padding:8px 10px; border-radius:10px; border:1px dashed var(--accent); }
+.hl b { color:var(--accent); }
+.acts { display:flex; gap:6px; flex-wrap:wrap; }
+.acts .btn { flex:1 1 auto; }
+.judge { display:flex; flex-direction:column; gap:8px; border-top:1px dashed var(--line); padding-top:10px; }
+.judge label { font-size:.8rem; color:var(--muted); display:flex; flex-direction:column; gap:4px; }
+.judge select, .judge input[type=text], .judge input[type=date], .settings input { font:inherit; font-size:16px; width:100%; padding:8px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--fg); }
+.judge input[type=date], .settings input[type=date] { -webkit-appearance:none; appearance:none; min-height:42px; display:block; }
+.judge .check { flex-direction:row; align-items:center; gap:8px; font-size:.9rem; color:var(--fg); }
+.judge .dates { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.err { color:var(--bad); font-size:.82rem; min-height:1em; }
+.empty { color:var(--muted); padding:24px 0; grid-column:1/-1; }
+details.box { margin:10px 16px 0; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 12px; font-size:.88rem; }
+details.box summary { cursor:pointer; font-weight:600; }
+details.box ol { padding-left:1.3em; margin:8px 0; }
+.settings { display:flex; flex-direction:column; gap:8px; margin-top:8px; }
+.hidden { display:none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>イベント再投稿リスト</h1>
+  <div class="status" id="status">読み込み中…</div>
+  <div class="row">
+    <label class="btn primary" for="zip">エクスポートを読み込む</label>
+    <input id="zip" type="file" accept=".zip,application/zip" multiple class="hidden">
+    <button class="btn" id="reload" type="button">再読み込み</button>
+  </div>
+  <nav class="tabs" id="tabs" aria-label="表示の切り替え">
+    <button data-tab="pending">判定待ち</button><button data-tab="todo" class="on">シェア対象</button><button data-tab="done">シェア済み</button><button data-tab="skipped">除外</button><button data-tab="outside">対象外</button>
+  </nav>
+</header>
+<div id="msg" role="status"></div>
+<details class="box" id="howto">
+  <summary>シェアとハイライト追加の手順</summary>
+  <ol>
+    <li>「Instagramで開く」→ 投稿の紙飛行機アイコン →「ストーリーズに投稿を追加」→ 右下の「ストーリーズ」で投稿</li>
+    <li>プロフィールのアイコンをタップして今のストーリーを開く → 右下の「ハイライト」→ カードに出ている追加先（例: 2026年11月）を選ぶ（無ければ「新規」で同じ名前を作る）</li>
+    <li>このページに戻って「シェアした」を押す</li>
+  </ol>
+</details>
+<details class="box" id="settings">
+  <summary>設定（鍵の登録）</summary>
+  <div class="settings">
+    <div class="sub">記録の保存先（記録専用の非公開リポジトリ ig-repost-data）に書き込むための鍵（fine-grained token）を貼り付けます。鍵はこの iPhone の中にだけ保存されます。<br>
+      <b>ホーム画面のアイコンから開いて登録してください。</b>Safari で開いたページとホーム画面のアイコンは保存場所が別なので、Safari で登録した鍵はアイコンからは見えません。</div>
+    <input id="token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_…">
+    <label class="sub" for="tokenExpires">鍵の有効期限（鍵を作った画面に出る日付）。期限の1週間前から知らせます</label>
+    <input id="tokenExpires" type="date">
+    <div class="row"><button class="btn primary" id="saveToken" type="button">保存</button><button class="btn" id="clearToken" type="button">鍵を消す</button></div>
+    <div class="sub" id="tokenInfo"></div>
+  </div>
+</details>
+<main id="list"></main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
+        integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>

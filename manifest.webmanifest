@@ -1,0 +1,10 @@
+{
+  "name": "イベント再投稿リスト",
+  "short_name": "イベント再投稿",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#fafafa",
+  "theme_color": "#c13584",
+  "icons": [{ "src": "icon.png", "sizes": "180x180", "type": "image/png" }]
+}
