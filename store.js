@@ -103,6 +103,18 @@ async function request(method, body) {
   return res;
 }
 
+// コミットが1つも無いリポジトリでは、contents API が 409「Git Repository is empty.」を返す。
+// 競合の 409 と取り違えないよう、本文の message で見分ける（レビュー M1）。GET は空の記録として読む。
+// PUT は最初のコミットを作れることが多いが、409 が返ったときはやり直さずに原因を伝える。
+async function isEmptyRepo(res) {
+  if (res.status !== 409) return false;
+  const json = await res.clone().json().catch(() => ({}));
+  return /^Git Repository is empty/i.test(json.message || "");
+}
+
+const EMPTY_REPO_MESSAGE =
+  "記録のリポジトリ ig-repost-data が空です（ファイルが1つもありません）。github.com で ig-repost-data を開き、「Add a README」から README を1つ作ってから、もう一度試してください。";
+
 // 記録の中身が壊れていないか（壊れていたら空の記録で上書きしない。レビュー L6）
 function parseState(json) {
   if (json.encoding === "none" || typeof json.content !== "string") {
@@ -139,6 +151,10 @@ export async function load() {
     }
     throw new StoreError(explain(404), 404);
   }
+  if (await isEmptyRepo(res)) {
+    cache = { state: emptyState(), sha: null };
+    return { state: emptyState() };
+  }
   if (!res.ok) throw new StoreError(explain(res.status, res), res.status);
   const json = await res.json();
   const state = parseState(json);
@@ -169,6 +185,7 @@ export async function update(mutate, message) {
       if (!cache.sha) cache = null; // sha が分からなければ次回は読み直す
       return state;
     }
+    if (await isEmptyRepo(res)) throw new StoreError(EMPTY_REPO_MESSAGE, 409);
     if (res.status !== 409 && res.status !== 422) throw new StoreError(explain(res.status, res), res.status);
   }
   throw new StoreError("ほかの端末での保存と重なりました。少し待ってからもう一度押してください。");
